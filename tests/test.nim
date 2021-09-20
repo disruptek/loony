@@ -11,6 +11,7 @@ import cps
 import loony
 
 const
+  sleepEnabled = true
   continuationCount = when defined(windows): 1_000 else: 10_000
 let
   threadCount = when defined(danger): countProcessors() else: 1
@@ -46,29 +47,33 @@ proc pass(cFrom, cTo: C): C =
   cTo.q = cFrom.q
   return cTo
 
-proc enqueue(c: C): C {.cpsMagic.} =
+proc enqueue(c: sink C): C {.cpsMagic.} =
   c.q.push(c)
 
 var counter {.global.}: Atomic[int]
 
 # try to delay a reasonable amount of time despite platform
-when defined(windows):
-  proc noop(c: C): C {.cpsMagic.} =
-    sleep:
-      when defined(danger):
-        1
-      else:
-        0 # 🤔
-    c
+when sleepEnabled:
+  when defined(windows):
+    proc noop(c: C): C {.cpsMagic.} =
+      sleep:
+        when defined(danger):
+          1
+        else:
+          0 # 🤔
+      c
+  else:
+    import posix
+    proc noop(c: C): C {.cpsMagic.} =
+      const
+        ns = when defined(danger): 1_000 else: 10_000
+      var x = Timespec(tv_sec: 0.Time, tv_nsec: ns)
+      var y: Timespec
+      if 0 != nanosleep(x, y):
+        raise
+      c
 else:
-  import posix
   proc noop(c: C): C {.cpsMagic.} =
-    const
-      ns = when defined(danger): 1_000 else: 10_000
-    var x = Timespec(tv_sec: 0.Time, tv_nsec: ns)
-    var y: Timespec
-    if 0 != nanosleep(x, y):
-      raise
     c
 
 proc doContinualThings() {.cps: C.} =
