@@ -40,15 +40,14 @@ proc atomicRC*(p: ref): int =
   result = unshit result
 
 proc atomicRC*(p: ref; n: int) =
-  let n = shit n
+  let old = atomicFetchAnd(rcPtr(p), rcMask, ATOMIC_SEQ_CST)
+  let n = (shit n) and old
   atomicStore(rcPtr(p), unsafeAddr n, ATOMIC_SEQ_CST)
 
 proc atomicIncRef*(p: ref): int =
   ## returns the old value
-  result = atomicFetchAdd(rcPtr(p), rcIncrement, ATOMIC_SEQ_CST)
-  result = unshit result
+  unshit atomicFetchAdd(rcPtr(p), rcIncrement, ATOMIC_SEQ_CST)
 
 proc atomicDecRef*(p: ref): int =
   ## returns the old value
-  result = atomicFetchSub(rcPtr(p), rcIncrement, ATOMIC_SEQ_CST)
-  result = unshit result
+  unshit atomicFetchSub(rcPtr(p), rcIncrement, ATOMIC_SEQ_CST)
