@@ -184,12 +184,13 @@ proc push*[T](queue: LoonyQueue[T], el: sink T) =
         "cowardly refusing to push a nil"
     else:
       when T is ref:
-        let rc = atomicIncRef(el)
-        if rc != 0:
-          discard atomicDecRef(el)
+        if not el.isIsolated:
           raise ValueError.newException:
-            "unable to queue an unisolated ref: rc == " & $rc
+            "unable to queue an unisolated ref: rc == " & $atomicRC(el)
       cast[uint](el) or WRITER
+
+  when T is ref:
+    wasMoved el
 
   while true:
     ## The enqueue procedure begins with incrementing the
