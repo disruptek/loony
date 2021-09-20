@@ -89,7 +89,7 @@ template compareAndSwapHead(queue: LoonyQueue, expect: var uint, swap: uint | Ta
 ## This path requires the threads to first help updating the linked list
 ## struct before retrying and entering the fast path in the next attempt.
 
-proc advTail[T](queue: LoonyQueue[T]; el: T; t: NodePtr): AdvTail =
+proc advTail[T](queue: LoonyQueue[T]; w: uint; t: NodePtr): AdvTail =
   ## Modified Michael-Scott algorithm
 
   while true:
@@ -108,7 +108,7 @@ proc advTail[T](queue: LoonyQueue[T]; el: T; t: NodePtr): AdvTail =
 
     var next = t.fetchNext()
     if cast[ptr Node](next).isNil():
-      var node = cast[uint](allocNode el)
+      var node = cast[uint](allocNode w)
       var null = 0'u
       if t.compareAndSwapNext(null, node):
         result = AdvAndInserted
@@ -175,7 +175,22 @@ proc advHead(queue: LoonyQueue; curr: var TagPtr;
 proc push*[T](queue: LoonyQueue[T], el: sink T) =
   ## We begin by tagging the pointer for el with a WRITER
   ## bit and then perform a FAA.
-  let w = prepareElement el
+
+  # Prepare an item to be taken into the queue; we bump the RC first to
+  # ensure that no other operations free it, then add the WRITER bit.
+  let w =
+    if el.isNil:
+      raise ValueError.newException:
+        "cowardly refusing to push a nil"
+    else:
+      when T is ref:
+        let rc = atomicIncRef(el)
+        if rc != 0:
+          discard atomicDecRef(el)
+          raise ValueError.newException:
+            "unable to queue an unisolated ref: rc == " & $rc
+      cast[uint](el) or WRITER
+
   while true:
     ## The enqueue procedure begins with incrementing the
     ## index of the associated node in the TagPtr
@@ -210,7 +225,7 @@ proc push*[T](queue: LoonyQueue[T], el: sink T) =
     else:
       # Slow path; modified version of Michael-Scott algorithm; see
       # advTail above
-      case queue.advTail(el, tag.nptr)
+      case queue.advTail(w, tag.nptr)
       of AdvAndInserted:
         break
       of AdvOnly:

@@ -23,14 +23,17 @@ template toUInt*(nodeptr: ptr Node): uint =
   # Equivalent to toNodePtr
   cast[uint](nodeptr)
 
-proc prepareElement*[T](el: T): uint =
-  ## Prepare an item to be taken into the queue; we bump the RC first to
-  ## ensure that no other operations free it, then add the WRITER bit.
-  when T is ref:
-    if not el.isIsolated:
-      raise ValueError.newException:
-        "unable to queue an unisolated ref: rc == " & $atomicRC(el)
-  result = cast[uint](el) or WRITER
+when false:
+  proc prepareElement*[T](el: sink T): uint =
+    ## Prepare an item to be taken into the queue; we bump the RC first to
+    ## ensure that no other operations free it, then add the WRITER bit.
+    result = cast[uint](el) or WRITER
+    when T is ref:
+      let rc = atomicIncRef(el)
+      if rc != 0:
+        discard atomicDecRef(el)
+        raise ValueError.newException:
+          "unable to queue an unisolated ref: rc == " & $rc
 
 template fetchNext*(node: Node, moorder: MemoryOrder = moAcquireRelease): NodePtr =
   node.next.load(order = moorder)
@@ -63,10 +66,10 @@ proc allocNode*(): ptr Node =
   # echo "allocd"
   cast[ptr Node](allocAligned0(sizeof(Node), NODEALIGN.int))
 
-proc allocNode*[T](el: T): ptr Node =
+proc allocNode*(w: uint): ptr Node =
   # echo "allocd"
   result = allocNode()
-  result.slots[0].store(prepareElement el)
+  result.slots[0].store(w)
 
 proc tryReclaim*(node: var Node; start: uint16) =
   # echo "trying to reclaim"
