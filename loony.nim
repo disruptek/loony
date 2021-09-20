@@ -172,14 +172,14 @@ proc advHead(queue: LoonyQueue; curr: var TagPtr;
 ## determining the order in which two operations occured possible.
 
 proc push*[T](queue: LoonyQueue[T], el: sink T) =
+  ## We begin by tagging the pointer for el with a WRITER
+  ## bit and then perform a FAA.
+  let w = prepareElement el
   while true:
     ## The enqueue procedure begins with incrementing the
     ## index of the associated node in the TagPtr
     var tag = fetchIncTail(queue)
     if likely(tag.idx < N):
-      ## We begin by tagging the pointer for el with a WRITER
-      ## bit and then perform a FAA.
-      var w = prepareElement el
       let prev = tag.fetchAddSlot w
       case prev
       of 0, RESUME:
