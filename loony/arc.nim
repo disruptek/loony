@@ -51,3 +51,5 @@ proc atomicIncRef*(p: ref): int =
 proc atomicDecRef*(p: ref): int =
   ## returns the old value
   unshit atomicFetchSub(rcPtr(p), rcIncrement, ATOMIC_SEQ_CST)
+
+template isIsolated*(p: ref): bool = atomicRC(p) == 0

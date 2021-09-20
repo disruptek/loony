@@ -251,8 +251,8 @@ proc pop*[T](queue: LoonyQueue[T]): T =
             if unlikely((prev and RESUME) != 0):
               tryReclaim(head.node, head.idx + 1)
             result = cast[T](prev and SLOTMASK)
-            when T is ref:
-              atomicRC(result, 1)
+            if not result.isIsolated:
+              raise Defect.newException "ref grew an rc in the queue"
             break
     else:
       case queue.advHead(curr, head.nptr, tail.nptr)

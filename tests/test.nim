@@ -12,9 +12,9 @@ import loony
 
 const
   sleepEnabled = true
-  continuationCount = when defined(windows): 1_000 else: 10_000
+  continuationCount = when defined(windows): 1_000 else: 2_000_000
 let
-  threadCount = when defined(danger): countProcessors() else: 1
+  threadCount = when defined(danger): 2000*countProcessors() else: 1
 
 type
   C = ref object of Continuation
@@ -91,52 +91,56 @@ template expectCounter(n: int): untyped =
     checkpoint "expected: ", n
     raise
 
-suite "loony":
-  var queue: LoonyQueue[Continuation]
+proc main =
+  suite "loony":
+    var queue: LoonyQueue[Continuation]
 
-  block:
-    ## creation and initialization of the queue
+    block:
+      ## creation and initialization of the queue
 
-    # Moment of truth
-    queue = initLoonyQueue[Continuation]()
+      # Moment of truth
+      queue = initLoonyQueue[Continuation]()
 
-  block:
-    ## run some continuations through the queue in another thread
-    when defined(danger): skip "boring"
-    var targ = ThreadArg(q: queue)
-    var thr: Thread[ThreadArg]
+    block:
+      ## run some continuations through the queue in another thread
+      when defined(danger): skip "boring"
+      var targ = ThreadArg(q: queue)
+      var thr: Thread[ThreadArg]
 
-    counter.store 0
-    dumpAllocStats:
-      for i in 0 ..< continuationCount:
-        var c = whelp doContinualThings()
-        c.q = queue
-        discard enqueue c
-      createThread(thr, runThings, targ)
-      joinThread thr
-      expectCounter continuationCount
+      counter.store 0
+      dumpAllocStats:
+        for i in 0 ..< continuationCount:
+          var c = whelp doContinualThings()
+          c.q = queue
+          discard enqueue c
+        createThread(thr, runThings, targ)
+        joinThread thr
+        expectCounter continuationCount
 
-  block:
-    ## run some continuations through the queue in many threads
-    when not defined(danger): skip "slow"
-    var targ = ThreadArg(q: queue)
-    var threads: seq[Thread[ThreadArg]]
-    threads.newSeq threadCount
+    block:
+      ## run some continuations through the queue in many threads
+      when not defined(danger): skip "slow"
+      var targ = ThreadArg(q: queue)
+      var threads: seq[Thread[ThreadArg]]
+      threads.newSeq threadCount
 
-    counter.store 0
-    dumpAllocStats:
-      for i in 0 ..< continuationCount:
-        var c = whelp doContinualThings()
-        c.q = queue
-        discard enqueue c
-      checkpoint "queued $# continuations" % [ $continuationCount ]
+      counter.store 0
+      dumpAllocStats:
+        for i in 0 ..< continuationCount:
+          var c = whelp doContinualThings()
+          c.q = queue
+          discard enqueue c
+        checkpoint "queued $# continuations" % [ $continuationCount ]
 
-      for thread in threads.mitems:
-        createThread(thread, runThings, targ)
-      checkpoint "created $# threads" % [ $threadCount ]
+        for thread in threads.mitems:
+          createThread(thread, runThings, targ)
+        checkpoint "created $# threads" % [ $threadCount ]
 
-      for thread in threads.mitems:
-        joinThread thread
-      checkpoint "joined $# threads" % [ $threadCount ]
+        for thread in threads.mitems:
+          joinThread thread
+        checkpoint "joined $# threads" % [ $threadCount ]
 
-      expectCounter continuationCount
+        expectCounter continuationCount
+
+when isMainModule:
+  main()

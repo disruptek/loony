@@ -23,12 +23,11 @@ template toUInt*(nodeptr: ptr Node): uint =
   # Equivalent to toNodePtr
   cast[uint](nodeptr)
 
-proc prepareElement*[T](el: sink T): uint =
+proc prepareElement*[T](el: T): uint =
   ## Prepare an item to be taken into the queue; we bump the RC first to
   ## ensure that no other operations free it, then add the WRITER bit.
   when T is ref:
-    if atomicIncRef(el) != 2:
-      discard atomicDecRef(el)
+    if not el.isIsolated:
       raise ValueError.newException:
         "unable to queue an unisolated ref: rc == " & $atomicRC(el)
   result = cast[uint](el) or WRITER
