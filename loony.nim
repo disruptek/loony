@@ -1,3 +1,4 @@
+import std/strutils
 import std/atomics
 
 import loony/spec
@@ -251,8 +252,17 @@ proc pop*[T](queue: LoonyQueue[T]): T =
             if unlikely((prev and RESUME) != 0):
               tryReclaim(head.node, head.idx + 1)
             result = cast[T](prev and SLOTMASK)
-            if not result.isIsolated:
-              raise Defect.newException "ref grew an rc in the queue"
+            let rc = atomicRC(result)
+            case rc
+            of 0:
+              # nim is fixed
+              discard
+            of 1:
+              # nim is bugged
+              discard atomicDecRef(result)
+            else:
+              raise Defect.newException:
+                "ref grew to rc == $# in the queue" % [ $rc ]
             break
     else:
       case queue.advHead(curr, head.nptr, tail.nptr)
