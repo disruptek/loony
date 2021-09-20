@@ -2,6 +2,7 @@ import std/atomics
 
 import loony/spec
 import loony/node
+import loony/arc
 
 # sprinkle some raise defect
 # raise Defect(nil) | yes i am the
@@ -13,7 +14,7 @@ import loony/node
 # raise Defect(nil)
 
 type
-  LoonyQueue*[T: ref] = ref object
+  LoonyQueue*[T: ref | ptr] = ref object
     head     : Atomic[TagPtr]     ## Whereby node contains the slots and idx
     tail     : Atomic[TagPtr]     ## is the uint16 index of the slot array
     currTail : Atomic[NodePtr]    ## 8 bytes Current NodePtr
@@ -170,7 +171,7 @@ proc advHead(queue: LoonyQueue; curr: var TagPtr;
 ## announce both operations completion (in case of a read) and also makes
 ## determining the order in which two operations occured possible.
 
-proc push*[T](queue: LoonyQueue[T], el: T) =
+proc push*[T](queue: LoonyQueue[T], el: sink T) =
   while true:
     ## The enqueue procedure begins with incrementing the
     ## index of the associated node in the TagPtr
@@ -250,8 +251,8 @@ proc pop*[T](queue: LoonyQueue[T]): T =
             if unlikely((prev and RESUME) != 0):
               tryReclaim(head.node, head.idx + 1)
             result = cast[T](prev and SLOTMASK)
-            assert result != nil
-            GC_unref result
+            when T is ref:
+              atomicRC(result, 1)
             break
     else:
       case queue.advHead(curr, head.nptr, tail.nptr)

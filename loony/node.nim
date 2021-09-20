@@ -2,6 +2,7 @@ import std/atomics
 
 import loony/spec
 import loony/memalloc
+import loony/arc
 
 type
   Node* = object
@@ -22,10 +23,14 @@ template toUInt*(nodeptr: ptr Node): uint =
   # Equivalent to toNodePtr
   cast[uint](nodeptr)
 
-proc prepareElement*[T: ref](el: T): uint =
+proc prepareElement*[T](el: sink T): uint =
   ## Prepare an item to be taken into the queue; we bump the RC first to
   ## ensure that no other operations free it, then add the WRITER bit.
-  GC_ref el
+  when T is ref:
+    if atomicIncRef(el) != 2:
+      discard atomicDecRef(el)
+      raise ValueError.newException:
+        "unable to queue an unisolated ref: rc == " & $atomicRC(el)
   result = cast[uint](el) or WRITER
 
 template fetchNext*(node: Node, moorder: MemoryOrder = moAcquireRelease): NodePtr =
