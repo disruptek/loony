@@ -45,8 +45,10 @@ proc atomicRC*(p: ref; n: int) =
 
 proc atomicIncRef*(p: ref): int =
   ## returns the old value
-  atomicFetchAdd(rcPtr(p), rcIncrement, ATOMIC_SEQ_CST)
+  result = atomicFetchAdd(rcPtr(p), rcIncrement, ATOMIC_SEQ_CST)
+  result = unshit result
 
 proc atomicDecRef*(p: ref): int =
   ## returns the old value
-  atomicFetchSub(rcPtr(p), rcIncrement, ATOMIC_SEQ_CST)
+  result = atomicFetchSub(rcPtr(p), rcIncrement, ATOMIC_SEQ_CST)
+  result = unshit result
