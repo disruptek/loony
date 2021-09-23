@@ -5,22 +5,22 @@ import std/atomics
 import std/os
 import std/macros
 
-import balls
-import cps
+import pkg/balls
+import pkg/cps
+import pkg/arc
 
 import loony
 
 const
   sleepEnabled = true
-  continuationCount = when defined(windows): 1_000 else: 2_000_000
+  continuationCount = when defined(windows): 1_000 else: 1
 let
   threadCount = when defined(danger): 2000*countProcessors() else: 1
 
+var q = initLoonyQueue[Continuation]()
+
 type
   C = ref object of Continuation
-    q: LoonyQueue[Continuation]
-  ThreadArg = object
-    q: LoonyQueue[Continuation]
 
 addHandler newConsoleLogger()
 setLogFilter:
@@ -34,21 +34,21 @@ setLogFilter:
 proc dealloc(c: C; E: typedesc[C]): E =
   checkpoint "reached dealloc"
 
-proc runThings(targ: ThreadArg) {.thread.} =
+proc runThings(arg: bool) {.thread.} =
   while true:
-    var job = pop targ.q
+    var job = pop q
     if job.dismissed:
       break
     else:
       while job.running:
+        echo "pre-tramp ", atomicRC(job)
         job = trampoline job
-
-proc pass(cFrom, cTo: C): C =
-  cTo.q = cFrom.q
-  return cTo
+        if not job.dismissed:
+          echo "post-tramp ", atomicRC(job)
 
 proc enqueue(c: sink C): C {.cpsMagic.} =
-  c.q.push(c)
+  echo "pre-queue ", atomicRC(c)
+  q.push c
 
 var counter {.global.}: Atomic[int]
 
@@ -93,47 +93,35 @@ template expectCounter(n: int): untyped =
 
 proc main =
   suite "loony":
-    var queue: LoonyQueue[Continuation]
-
-    block:
-      ## creation and initialization of the queue
-
-      # Moment of truth
-      queue = initLoonyQueue[Continuation]()
-
     block:
       ## run some continuations through the queue in another thread
-      when defined(danger): skip "boring"
-      var targ = ThreadArg(q: queue)
-      var thr: Thread[ThreadArg]
+      #when defined(danger): skip "boring"
+      var thr: Thread[bool]
 
       counter.store 0
       dumpAllocStats:
         for i in 0 ..< continuationCount:
           var c = whelp doContinualThings()
-          c.q = queue
           discard enqueue c
-        createThread(thr, runThings, targ)
+        createThread(thr, runThings, true)
         joinThread thr
         expectCounter continuationCount
 
     block:
       ## run some continuations through the queue in many threads
-      when not defined(danger): skip "slow"
-      var targ = ThreadArg(q: queue)
-      var threads: seq[Thread[ThreadArg]]
-      threads.newSeq threadCount
+      #when not defined(danger): skip "slow"
+      var threads: seq[Thread[bool]]
+      newSeq(threads, threadCount)
 
       counter.store 0
       dumpAllocStats:
         for i in 0 ..< continuationCount:
           var c = whelp doContinualThings()
-          c.q = queue
           discard enqueue c
         checkpoint "queued $# continuations" % [ $continuationCount ]
 
         for thread in threads.mitems:
-          createThread(thread, runThings, targ)
+          createThread(thread, runThings, true)
         checkpoint "created $# threads" % [ $threadCount ]
 
         for thread in threads.mitems:

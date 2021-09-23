@@ -1,8 +1,9 @@
 import std/atomics
 
+import pkg/arc
+
 import loony/spec
 import loony/memalloc
-import loony/arc
 
 type
   Node* = object

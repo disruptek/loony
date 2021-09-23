@@ -1,9 +1,10 @@
 import std/strutils
 import std/atomics
 
+import pkg/arc
+
 import loony/spec
 import loony/node
-import loony/arc
 
 # sprinkle some raise defect
 # raise Defect(nil) | yes i am the
